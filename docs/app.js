@@ -33,7 +33,7 @@ const state = {
   offsetMs: 0,
   scale: 1,
   opacity: 0.95,
-  position: "bottom-left",
+  position: "bottom-center",
   exporting: false,
 };
 
@@ -230,9 +230,8 @@ function paintOverlay(targetCtx, width, height, sample, csvTimeMs) {
   const overlayWidth = stickSize * 2 + gap;
   const overlayHeight = stickSize + 62 * scale;
 
-  const right = state.position.endsWith("right");
   const top = state.position.startsWith("top");
-  const originX = right ? width - padding - overlayWidth : padding;
+  const originX = (width - overlayWidth) / 2;
   const originY = top ? padding : height - padding - overlayHeight;
 
   targetCtx.save();

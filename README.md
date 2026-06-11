@@ -26,6 +26,8 @@ If the model is rearmed before `StopSec` expires, the same CSV continues. This a
 
 The target sample rate is 50 Hz. EdgeTX calls the active tool/telemetry script periodically, so actual cadence depends on radio load.
 
+The web app interpolates between CSV samples during preview and render, so 50 Hz logs still draw smoothly on 60/90 fps video. Captured motion detail is still limited by the logger cadence and by how often EdgeTX schedules the Lua script.
+
 ## CSV Format
 
 Files are written as `/LOGS/STICK001.CSV`, `/LOGS/STICK002.CSV`, and so on.
