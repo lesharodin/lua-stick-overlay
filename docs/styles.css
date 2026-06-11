@@ -42,7 +42,9 @@ select {
 
 .preview-panel {
   display: grid;
+  gap: 12px;
   align-items: center;
+  align-content: center;
   min-width: 0;
   padding: 24px;
 }
@@ -57,7 +59,6 @@ select {
   box-shadow: var(--shadow);
 }
 
-.stage video,
 .stage canvas {
   position: absolute;
   inset: 0;
@@ -65,13 +66,16 @@ select {
   height: 100%;
 }
 
-.stage video {
-  object-fit: contain;
-  background: #050605;
+.source-video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .stage canvas {
-  pointer-events: none;
+  background: #050605;
 }
 
 .empty-state {
@@ -98,6 +102,29 @@ select {
 .empty-state span {
   max-width: 360px;
   line-height: 1.45;
+}
+
+.preview-controls {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr) 64px 64px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.preview-controls input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.preview-controls output,
+.preview-controls span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .control-panel {
@@ -326,7 +353,13 @@ progress {
 
 @media (max-width: 520px) {
   .button-row,
-  .status-grid {
+  .status-grid,
+  .preview-controls {
     grid-template-columns: 1fr;
+  }
+
+  .preview-controls output,
+  .preview-controls span {
+    text-align: left;
   }
 }

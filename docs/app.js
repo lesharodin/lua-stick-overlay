@@ -1,10 +1,14 @@
 "use strict";
 
 const video = document.getElementById("video");
-const canvas = document.getElementById("overlay");
+const canvas = document.getElementById("preview");
 const ctx = canvas.getContext("2d");
 const stage = document.getElementById("stage");
 const emptyState = document.getElementById("emptyState");
+const playPauseButton = document.getElementById("playPauseButton");
+const timelineInput = document.getElementById("timelineInput");
+const timelineValue = document.getElementById("timelineValue");
+const durationValue = document.getElementById("durationValue");
 
 const videoInput = document.getElementById("videoInput");
 const csvInput = document.getElementById("csvInput");
@@ -23,6 +27,7 @@ const csvTime = document.getElementById("csvTime");
 const armState = document.getElementById("armState");
 const message = document.getElementById("message");
 const exportButton = document.getElementById("exportButton");
+const cancelExportButton = document.getElementById("cancelExportButton");
 const exportProgress = document.getElementById("exportProgress");
 const downloadLink = document.getElementById("downloadLink");
 
@@ -35,6 +40,9 @@ const state = {
   opacity: 0.95,
   position: "bottom-center",
   exporting: false,
+  cancelExport: false,
+  exportCancelResolve: null,
+  seeking: false,
 };
 
 function setMessage(text, isError = false) {
@@ -49,6 +57,13 @@ function clamp(value, min, max) {
 function formatMs(value) {
   const sign = value > 0 ? "+" : "";
   return `${sign}${Math.round(value)} ms`;
+}
+
+function formatSeconds(value) {
+  if (!Number.isFinite(value)) {
+    return "0.00s";
+  }
+  return `${value.toFixed(2)}s`;
 }
 
 function parseCsvLine(line) {
@@ -175,6 +190,12 @@ function resizeCanvas() {
   }
 }
 
+function updateStageAspect() {
+  if (video.videoWidth > 0 && video.videoHeight > 0) {
+    stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+  }
+}
+
 function drawStick(targetCtx, centerX, centerY, size, xValue, yValue, labelX, labelY) {
   const radius = size / 2;
   const knobRadius = Math.max(6, size * 0.075);
@@ -267,23 +288,43 @@ function paintOverlay(targetCtx, width, height, sample, csvTimeMs) {
   targetCtx.restore();
 }
 
-function drawOverlay(sample, csvTimeMs) {
+function composeFrame(targetCtx, targetCanvas) {
+  const width = targetCanvas.width;
+  const height = targetCanvas.height;
+  const csvTimeMs = video.currentTime * 1000 + state.offsetMs;
+  const sample = sampleAt(csvTimeMs);
+
+  targetCtx.fillStyle = "#050605";
+  targetCtx.fillRect(0, 0, width, height);
+
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+    targetCtx.drawImage(video, 0, 0, width, height);
+  }
+
+  paintOverlay(targetCtx, width, height, sample, csvTimeMs);
+  return { sample, csvTimeMs };
+}
+
+function drawPreviewFrame() {
   resizeCanvas();
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  paintOverlay(ctx, canvas.width, canvas.height, sample, csvTimeMs);
+  const frame = composeFrame(ctx, canvas);
+  updateReadout(frame.sample, frame.csvTimeMs);
 }
 
 function updateReadout(sample, csvTimeMs) {
   videoTime.textContent = `${video.currentTime.toFixed(2)}s`;
   csvTime.textContent = formatMs(csvTimeMs);
   armState.textContent = sample ? (sample.arm ? "ARMED" : "DISARMED") : "-";
+
+  if (!state.seeking && Number.isFinite(video.duration)) {
+    timelineInput.value = String(video.currentTime);
+  }
+
+  timelineValue.textContent = formatSeconds(video.currentTime);
 }
 
 function render() {
-  const csvTimeMs = video.currentTime * 1000 + state.offsetMs;
-  const sample = sampleAt(csvTimeMs);
-  drawOverlay(sample, csvTimeMs);
-  updateReadout(sample, csvTimeMs);
+  drawPreviewFrame();
   requestAnimationFrame(render);
 }
 
@@ -308,6 +349,7 @@ videoInput.addEventListener("change", () => {
   video.load();
   emptyState.hidden = true;
   downloadLink.hidden = true;
+  exportProgress.value = 0;
   setMessage(`Video selected: ${file.name}`);
 });
 
@@ -358,15 +400,6 @@ async function seekVideo(seconds) {
   await waitForEvent(video, "seeked");
 }
 
-function drawRenderedFrame(targetCtx, targetCanvas) {
-  targetCtx.fillStyle = "#050605";
-  targetCtx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
-  targetCtx.drawImage(video, 0, 0, targetCanvas.width, targetCanvas.height);
-
-  const csvTimeMs = video.currentTime * 1000 + state.offsetMs;
-  paintOverlay(targetCtx, targetCanvas.width, targetCanvas.height, sampleAt(csvTimeMs), csvTimeMs);
-}
-
 function captureVideoAudioTracks() {
   if (!video.captureStream) {
     return [];
@@ -403,7 +436,9 @@ async function exportRenderedVideo() {
   }
 
   state.exporting = true;
+  state.cancelExport = false;
   exportButton.disabled = true;
+  cancelExportButton.hidden = false;
   downloadLink.hidden = true;
   exportProgress.value = 0;
   setMessage("Rendering video in real time...");
@@ -430,6 +465,9 @@ async function exportRenderedVideo() {
   });
 
   const stopped = waitForEvent(recorder, "stop");
+  const canceled = new Promise((resolve) => {
+    state.exportCancelResolve = resolve;
+  });
 
   await seekVideo(0);
   video.muted = true;
@@ -439,13 +477,16 @@ async function exportRenderedVideo() {
   let exportError = null;
   const drawLoop = () => {
     if (!state.exporting) {
+      if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
       return;
     }
 
-    drawRenderedFrame(renderCtx, renderCanvas);
+    composeFrame(renderCtx, renderCanvas);
     exportProgress.value = clamp((video.currentTime / video.duration) * 100, 0, 100);
 
-    if (video.ended || video.currentTime >= video.duration) {
+    if (state.cancelExport || video.ended || video.currentTime >= video.duration) {
       state.exporting = false;
       recorder.stop();
       return;
@@ -458,7 +499,11 @@ async function exportRenderedVideo() {
 
   try {
     await video.play();
-    await waitForEvent(video, "ended");
+    await Promise.race([waitForEvent(video, "ended"), canceled]);
+    if (state.cancelExport && recorder.state !== "inactive") {
+      state.exporting = false;
+      recorder.stop();
+    }
   } catch (error) {
     exportError = error;
     state.exporting = false;
@@ -469,6 +514,7 @@ async function exportRenderedVideo() {
   }
 
   await stopped;
+  state.exportCancelResolve = null;
   cancelAnimationFrame(frameId);
   video.muted = previousMuted;
   await seekVideo(previousTime);
@@ -477,9 +523,16 @@ async function exportRenderedVideo() {
   }
 
   exportButton.disabled = false;
+  cancelExportButton.hidden = true;
 
   if (exportError) {
     setMessage(exportError.message, true);
+    return;
+  }
+
+  if (state.cancelExport) {
+    exportProgress.value = 0;
+    setMessage("Render canceled.");
     return;
   }
 
@@ -499,38 +552,45 @@ async function exportRenderedVideo() {
 offsetInput.addEventListener("input", () => {
   state.offsetMs = Number(offsetInput.value);
   updateControls();
+  drawPreviewFrame();
 });
 
 scaleInput.addEventListener("input", () => {
   state.scale = Number(scaleInput.value) / 100;
   updateControls();
+  drawPreviewFrame();
 });
 
 opacityInput.addEventListener("input", () => {
   state.opacity = Number(opacityInput.value) / 100;
   updateControls();
+  drawPreviewFrame();
 });
 
 positionInput.addEventListener("change", () => {
   state.position = positionInput.value;
+  drawPreviewFrame();
 });
 
 document.getElementById("nudgeBack").addEventListener("click", () => {
   state.offsetMs = clamp(state.offsetMs - 100, Number(offsetInput.min), Number(offsetInput.max));
   offsetInput.value = String(state.offsetMs);
   updateControls();
+  drawPreviewFrame();
 });
 
 document.getElementById("nudgeForward").addEventListener("click", () => {
   state.offsetMs = clamp(state.offsetMs + 100, Number(offsetInput.min), Number(offsetInput.max));
   offsetInput.value = String(state.offsetMs);
   updateControls();
+  drawPreviewFrame();
 });
 
 document.getElementById("resetOffset").addEventListener("click", () => {
   state.offsetMs = 0;
   offsetInput.value = "0";
   updateControls();
+  drawPreviewFrame();
 });
 
 exportButton.addEventListener("click", () => {
@@ -539,6 +599,66 @@ exportButton.addEventListener("click", () => {
     exportButton.disabled = false;
     setMessage(error.message, true);
   });
+});
+
+cancelExportButton.addEventListener("click", () => {
+  state.cancelExport = true;
+  state.exporting = false;
+  video.pause();
+  if (state.exportCancelResolve) {
+    state.exportCancelResolve();
+  }
+});
+
+playPauseButton.addEventListener("click", async () => {
+  if (!state.videoUrl) {
+    setMessage("Select a video first.", true);
+    return;
+  }
+
+  if (video.paused) {
+    await video.play();
+  } else {
+    video.pause();
+  }
+});
+
+timelineInput.addEventListener("input", () => {
+  state.seeking = true;
+  const nextTime = Number(timelineInput.value);
+  if (Number.isFinite(nextTime)) {
+    video.currentTime = nextTime;
+    timelineValue.textContent = formatSeconds(nextTime);
+  }
+});
+
+timelineInput.addEventListener("change", () => {
+  state.seeking = false;
+  drawPreviewFrame();
+});
+
+video.addEventListener("loadedmetadata", () => {
+  updateStageAspect();
+  timelineInput.max = String(video.duration || 0);
+  durationValue.textContent = formatSeconds(video.duration);
+  drawPreviewFrame();
+});
+
+video.addEventListener("play", () => {
+  playPauseButton.textContent = "Pause";
+});
+
+video.addEventListener("pause", () => {
+  playPauseButton.textContent = "Play";
+  drawPreviewFrame();
+});
+
+video.addEventListener("ended", () => {
+  playPauseButton.textContent = "Play";
+});
+
+video.addEventListener("seeked", () => {
+  drawPreviewFrame();
 });
 
 if ("ResizeObserver" in window) {
