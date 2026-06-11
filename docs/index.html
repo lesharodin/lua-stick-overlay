@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stick Overlay Web App</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="preview-panel" aria-label="Video overlay preview">
+        <div class="stage" id="stage">
+          <video id="video" controls playsinline></video>
+          <canvas id="overlay" aria-hidden="true"></canvas>
+          <div class="empty-state" id="emptyState">
+            <strong>Stick Overlay</strong>
+            <span>Select a flight video and STICK*.CSV log, align the overlay, then render a combined video.</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="control-panel" aria-label="Overlay controls">
+        <header class="panel-header">
+          <h1>Stick Overlay</h1>
+          <p>Combine EdgeTX stick logs with flight video directly in the browser.</p>
+        </header>
+
+        <section class="control-group">
+          <h2>Files</h2>
+          <label class="file-picker">
+            <span>Video</span>
+            <input id="videoInput" type="file" accept="video/*">
+          </label>
+          <label class="file-picker">
+            <span>CSV log</span>
+            <input id="csvInput" type="file" accept=".csv,text/csv">
+          </label>
+          <div class="status-grid">
+            <div>
+              <span class="metric-label">Samples</span>
+              <strong id="sampleCount">0</strong>
+            </div>
+            <div>
+              <span class="metric-label">Log length</span>
+              <strong id="logLength">0.0s</strong>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>Sync</h2>
+          <label class="range-row">
+            <span>Offset</span>
+            <output id="offsetValue">0 ms</output>
+            <input id="offsetInput" type="range" min="-10000" max="10000" step="20" value="0">
+          </label>
+          <div class="button-row">
+            <button id="nudgeBack" type="button" title="Move overlay 100 ms earlier">-100 ms</button>
+            <button id="resetOffset" type="button">Reset</button>
+            <button id="nudgeForward" type="button" title="Move overlay 100 ms later">+100 ms</button>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <h2>Overlay</h2>
+          <label class="select-row">
+            <span>Position</span>
+            <select id="positionInput">
+              <option value="bottom-left">Bottom left</option>
+              <option value="bottom-right">Bottom right</option>
+              <option value="top-left">Top left</option>
+              <option value="top-right">Top right</option>
+            </select>
+          </label>
+          <label class="range-row">
+            <span>Scale</span>
+            <output id="scaleValue">100%</output>
+            <input id="scaleInput" type="range" min="70" max="150" step="5" value="100">
+          </label>
+          <label class="range-row">
+            <span>Opacity</span>
+            <output id="opacityValue">95%</output>
+            <input id="opacityInput" type="range" min="35" max="100" step="5" value="95">
+          </label>
+        </section>
+
+        <section class="control-group">
+          <h2>Render</h2>
+          <button class="primary-button" id="exportButton" type="button">Render WebM</button>
+          <progress id="exportProgress" max="100" value="0"></progress>
+          <a class="download-link" id="downloadLink" download="stick-overlay.webm" hidden>Download rendered video</a>
+        </section>
+
+        <section class="control-group compact">
+          <h2>Frame</h2>
+          <dl class="readout">
+            <div>
+              <dt>Video</dt>
+              <dd id="videoTime">0.00s</dd>
+            </div>
+            <div>
+              <dt>CSV</dt>
+              <dd id="csvTime">0 ms</dd>
+            </div>
+            <div>
+              <dt>Arm</dt>
+              <dd id="armState">-</dd>
+            </div>
+          </dl>
+          <p class="message" id="message">No files selected.</p>
+        </section>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
