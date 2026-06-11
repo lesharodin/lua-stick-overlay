@@ -56,9 +56,9 @@ lua tests/stklog_test.lua
 
 ## Web App
 
-The browser app lives in `docs/` and is deployed to GitHub Pages. It runs fully in the browser: select a local flight video and a `STICK*.CSV` file, align the stick overlay, then render a combined WebM video.
+The browser app lives in `docs/` and is deployed to GitHub Pages from the `main` branch and `/docs` folder. It runs fully in the browser: select a local flight video and a `STICK*.CSV` file, align the stick overlay, then render a combined WebM video.
 
-After Pages is enabled for GitHub Actions, pushes to `main` publish the app at:
+The published app is available at:
 
 ```text
 https://lesharodin.github.io/lua-stick-overlay/
